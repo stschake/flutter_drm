@@ -53,4 +53,6 @@ struct drm_fb * drm_fb_get_from_bo(struct gbm_bo *bo);
 int init_drm(struct drm *drm, const char *device);
 const struct drm * init_drm_legacy(const char *device);
 
+drmModeModeInfoPtr drm_generate_mode(int h_pixels, int v_lines, float freq);
+
 #endif /* _DRM_COMMON_H */

@@ -23,4 +23,5 @@ run_engine_SOURCES = \
 	drm-common.c \
 	drm-common.h \
 	drm-legacy.c \
+	drm-mode.c \
 	main.c

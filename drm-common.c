@@ -160,6 +160,12 @@ int init_drm(struct drm *drm, const char *device)
 		return -1;
 	}
 
+	if (drm->mode->vrefresh != 60)
+	{
+		printf("Forcing 60hz mode (from %d)\n", drm->mode->vrefresh);
+		drm->mode = drm_generate_mode(drm->mode->hdisplay, drm->mode->vdisplay, 60);
+	}
+
 	/* find encoder: */
 	for (i = 0; i < resources->count_encoders; i++) {
 		encoder = drmModeGetEncoder(drm->fd, resources->encoders[i]);

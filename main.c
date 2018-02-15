@@ -8,6 +8,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <sys/poll.h>
 
 #include "common.h"
 #include "drm-common.h"
@@ -30,7 +31,7 @@ static void perf_exit(const char* name)
 	printf("%s took %dus\n", name, elapsed);
 }
 
-static void page_flip_handler(int fd, unsigned int frame, unsigned int sec,
+static void flip_handler(int fd, unsigned int frame, unsigned int sec,
 		unsigned int usec, void* data)
 {
 	int *waiting_for_flip = data;
@@ -56,9 +57,79 @@ bool opengl_clear_current(void* user)
 
 struct gbm_bo *bo;
 struct gbm_bo *next_bo;
+static bool waiting_for_flip = false;
+
+static struct pollfd drm_fds;
+static drmEventContext drm_evctx;
+static bool drm_wait_flip(int timeout)
+{
+	drm_fds.revents = 0;
+	if (poll(&drm_fds, 1, timeout) < 0)
+		return false;
+	if (drm_fds.revents & (POLLHUP | POLLERR))
+		return false;
+	if (drm_fds.revents & POLLIN)
+	{
+		drmHandleEvent(drm->fd, &drm_evctx);
+		return true;
+	}
+	return false;
+}
+
+static bool wait_for_flip(bool block)
+{
+	int timeout = 0;
+
+	if (!waiting_for_flip)
+		return false;
+
+	if (block)
+		timeout = -1;
+
+	while (waiting_for_flip)
+	{
+		if (!drm_wait_flip(timeout))
+			break;
+	}
+
+	if (waiting_for_flip)
+		return true;
+
+	gbm_surface_release_buffer(gbm->surface, bo);
+	bo = next_bo;
+	return false;
+}
+
+static bool queue_flip()
+{
+	next_bo = gbm_surface_lock_front_buffer(gbm->surface);
+	struct drm_fb *fb = drm_fb_get_from_bo(next_bo);
+
+	if (drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip) == 0)
+		return true;
+	return false;
+}
+
+static void swap_buffers()
+{
+	eglSwapBuffers(egl->display, egl->surface);
+	if (wait_for_flip(0))
+		return;
+
+	waiting_for_flip = queue_flip();
+	if (gbm_surface_has_free_buffers(gbm->surface))
+		return;
+
+	wait_for_flip(true);
+}
 
 bool display_init()
 {
+	drm_fds.fd = drm->fd;
+	drm_fds.events = POLLIN;
+	drm_evctx.version = DRM_EVENT_CONTEXT_VERSION;
+	drm_evctx.page_flip_handler = flip_handler;
+
 	glClearColor(1, 1, 1, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glFlush();
@@ -84,7 +155,6 @@ bool display_init()
 bool opengl_present(void* user)
 {
 	static bool first = true;
-	static volatile int waiting_for_flip = 0;
 
 	if (first)
 	{
@@ -92,37 +162,7 @@ bool opengl_present(void* user)
 		first = false;
 	}
 
-	while (waiting_for_flip)
-	{
-		drmEventContext ctx = { .version = 2, .page_flip_handler = page_flip_handler };
-		drmHandleEvent(drm->fd, &ctx);
-	}
-	gbm_surface_release_buffer(gbm->surface, bo);
-	bo = next_bo;
-
-	eglSwapBuffers(egl->display, egl->surface);
-
-	next_bo = gbm_surface_lock_front_buffer(gbm->surface);
-	struct drm_fb *fb = drm_fb_get_from_bo(next_bo);
-	if (!fb)
-	{
-		printf("Failed to get a new framebuffer bo\n");
-		return false;
-	}
-	int ret = drmModeSetCrtc(drm->fd, drm->crtc_id, fb->fb_id, 0, 0, &drm->connector_id, 1, drm->mode);
-	if (ret)
-	{
-		printf("Failed to set mode: %s\n", strerror(errno));
-		return false;
-	}
-	waiting_for_flip = 1;
-	ret = drmModePageFlip(drm->fd, drm->crtc_id, fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip);
-	if (ret)
-	{
-		printf("failed to queue page flip: %s\n", strerror(errno));
-		return false;
-	}
-
+	swap_buffers();
 	return true;
 }
 

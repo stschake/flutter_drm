@@ -282,7 +282,7 @@ int main()
 
 	FlutterProjectArgs project;
 	project.struct_size = sizeof(FlutterProjectArgs);
-	project.assets_path = "project/app.flx";
+	project.assets_path = "project/";
 	project.main_path = ""; //"project/main.dart";
 	project.packages_path = ""; //"project/.packages";
 	project.icu_data_path = ".";

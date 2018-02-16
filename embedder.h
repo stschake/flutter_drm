@@ -41,6 +41,7 @@ typedef struct {
   BoolCallback clear_current;
   BoolCallback present;
   UIntCallback fbo_callback;
+  BoolCallback make_resource_current;
 } FlutterOpenGLRendererConfig;
 
 typedef struct {
@@ -121,9 +122,7 @@ typedef struct {
   // collected after the call to |FlutterEngineRun| returns. The string must
   // be NULL terminated.
   const char* icu_data_path;
-  // The command line argument count used to initialize the project. The string
-  // can be collected after the call to |FlutterEngineRun| returns. The string
-  // must be NULL terminated.
+  // The command line argument count used to initialize the project.
   int command_line_argc;
   // The command line arguments used to initialize the project. The strings can
   // be collected after the call to |FlutterEngineRun| returns. The strings must
@@ -166,6 +165,12 @@ FlutterResult FlutterEngineSendPlatformMessageResponse(
     const FlutterPlatformMessageResponseHandle* handle,
     const uint8_t* data,
     size_t data_length);
+
+// This API is only meant to be used by platforms that need to flush tasks on a
+// message loop not controlled by the Flutter engine. This API will be
+// deprecated soon.
+FLUTTER_EXPORT
+FlutterResult __FlutterEngineFlushPendingTasksNow();
 
 #if defined(__cplusplus)
 }  // extern "C"
